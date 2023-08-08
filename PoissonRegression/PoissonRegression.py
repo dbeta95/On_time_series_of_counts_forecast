@@ -2,6 +2,7 @@ import os
 import sys
 
 import numpy as np
+import tensorflow as tf
 
 from typing import Optional
 
@@ -156,3 +157,54 @@ class PoissonRegression():
         if as_integers:
             y_hat = np.round(y_hat)
         return y_hat
+    
+class PoissonRegressionSyntheticData():
+    """
+    Module to generate synthetic data for lineal regression
+    """
+    def __init__(self, 
+        w:tf.Tensor, b:tf.Tensor, 
+        num_train:int=1000,num_val:int=200,batch_size:int=32,
+        seed:int=None
+    ):
+        """
+        Class initialization method
+        """
+        self.num_train = num_train
+        self.num_val = num_val
+        self.batch_size = batch_size
+        self.n = num_train + num_val
+        if seed:
+            tf.random.set_seed(seed)            
+        self.seed = seed
+        x1 = tf.random.uniform((self.n, 1), seed=1)
+        x2 = tf.random.normal((self.n,1), seed=1)
+        self.X = tf.concat([x1,x2], axis=1)
+        lmbd = tf.matmul(self.X, tf.reshape(w, (-1,1))) + b
+        self.y = tf.reshape(tf.random.poisson((1,), tf.exp(lmbd),seed=1),(-1,1))
+
+    def training_loader(self):
+        """
+        Method to create the data loader for the training process
+        """
+        dataset = tf.data.Dataset.from_tensor_slices((self.X[:self.num_train],self.y[:self.num_train]))
+        return dataset.shuffle(buffer_size=dataset.cardinality(), seed=self.seed).batch(self.batch_size)
+    
+    def validation_loader(self):
+        """
+        Method to create the data loader for the validation process
+        """
+        dataset = tf.data.Dataset.from_tensor_slices((self.X[self.num_train:],self.y[self.num_train:]))
+        return dataset.batch(self.batch_size)
+    
+class PossionRegressionNN(tf.keras.Model):
+
+    def __init__(self, input_shape):
+        super(PossionRegressionNN, self).__init__()
+
+        self.dense = tf.keras.layers.Dense(
+            1, input_shape=input_shape, activation=tf.exp
+        )
+
+    def call(self, input):
+        return self.dense(input)
