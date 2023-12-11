@@ -44,7 +44,7 @@ class PoissonAutoregression():
         self.q = q
         self.n_par = self.p+self.q+1
 
-    def __initialize_values__(self,y:Any,theta:np.ndarray):
+    def __initialize_values__(self,y:Any,theta:np.ndarray, epsilon:float=1e-8):
         """
         Abstract method to initialice the values for the rates and covariables.
         The method depends on the type of model used and varies in the variable 
@@ -102,7 +102,7 @@ class PoissonAutoregression():
     
             # Setting the corabiables for the model
             self.k = max(self.p, self.q)
-            self.nu[:self.k] = np.log(self.y[:self.k])
+            self.nu[:self.k] = np.log(self.y[:self.k]+epsilon)
             for t in range(self.k, self.n):
 
                 nus = np.flip(self.nu[t-self.p:t])
@@ -590,3 +590,100 @@ class AutoINGARCH():
         self.best_model = best_model
 
         return best_model
+    
+
+class MultivariatePoissonAutorregresion():
+    """
+    Class defining a multivariate forcaster that implements Poisson
+    autoregressive (also called INGARCH) models on each series on the data set.
+    """
+    def __init__(self,
+        max_p:int=12,
+        max_q:int=12,
+        cv_folds:int=5,
+        link:str="log-lineal",
+        method:str="Adam"
+    ):
+        """
+        Class instantiation method.
+
+        Args
+        ----------
+            max_p:int=12
+                Maximum autorregresive order for the values
+            max_q:int=12
+                Maximum autorregresive order for the errors
+            cv_folds:int=5
+                Number of train-test splits to be used in the cross-validation
+            link:str="log-lineal"
+                Link function for the mean and the systematic component. Can be
+                "lineal" or "log-lineal"
+            method:str="Adam"
+                Method used to find the parameters optimal values. For the log-lineal model
+                only the Adam method is available.
+
+                The available methods for the lineal model are "Adam" gradient descent and 
+                "trust-constr" or "SLSQP" for the implementation in scipy 
+                (see https://docs.scipy.org/doc/scipy/tutorial/optimize.html#constrained-minimization-of-multivariate-scalar-functions-minimize)
+                for the Trust-Region Constrained Algorithm and the Sequential Least Squares Programming Algorithm
+            
+                Note that the "Adam" gradient descent is an unconstrained method and may fall to
+                find values that fulfill the condition to garantee stationarity for the series, in which case
+                the warning will shown.
+        """
+        self.max_p=max_p
+        self.max_q=max_q
+        self.cv_folds=cv_folds
+        self.link=link
+        self.method=method
+
+    def fit(self, data:np.ndarray):
+        """
+        Method for the automatic instantiation and automatic autorregresive order
+        selection for the models for each series in the data using the AutoINGARCH
+        class.
+        
+        Args:
+        ----------
+            data:np.ndarray
+                2D array containing the time series, with each searies as a column
+        """
+        cols = data.shape[1]
+        self.models = {}
+        self.fitted_values=[]
+
+        for i in range(cols):
+            auto_ingarch = AutoINGARCH(
+                series=data[:,i], 
+                max_p=self.max_p, 
+                max_q=self.max_q, 
+                cv_folds=self.cv_folds, 
+                num_iter=100
+            )
+            ingarch_model = auto_ingarch()
+            self.models["poisson_autoregression_"+str(i)] = PoissonAutoregression(
+                p=ingarch_model.p,
+                q=ingarch_model.q,
+                link="log-lineal"
+            )
+            self.models["poisson_autoregression_"+str(i)].fit(data[:,i])
+            self.fitted_values.append(self.models["poisson_autoregression_"+str(i)].fitted)
+
+        self.fitted_values = np.array(self.fitted_values).transpose()
+
+    def predict(self, h:int=12):
+        """
+        Method to forecast an specific amount of timesteps for all time series
+
+        Args:
+        ----------
+            h:int
+                Number of timesteps to forecast
+
+        Returns:
+        ----------
+            np.ndarray
+                2D array containing all forecasts.
+        """
+        forecasts = [model.predict(h) for model in self.models.values()]
+        return np.array(forecasts).transpose()
