@@ -339,7 +339,7 @@ class RNNHyperTune():
         return new_model, history
         
         
-    def fit(self, data: np.ndarray, checkpoint_path:str, epochs:int=100):
+    def fit(self, data: np.ndarray, checkpoint_path:str, epochs:int=100, verbose=True):
         """
         Method for the automatic selection of hyperparameter values. The method
         re-trains and saves the best model.
@@ -357,8 +357,11 @@ class RNNHyperTune():
         """
         train_data, val_data, scaler = get_datasets(data)
         val_losses = []
+        models = len(self.params_list)
 
-        for parameters in self.params_list:
+        for i,parameters in enumerate(self.params_list):
+            if verbose:
+                print(f"Training model {i}/{models}.")
             if parameters['architechture'] in ("type-1", "type-2"):
                 parameters['sequence_lenght'] = self.window_size
                 parameters['output_lenght'] = self.window_size
@@ -373,11 +376,16 @@ class RNNHyperTune():
                 epochs=epochs,
                 **parameters
             )
+            val_loss = min(history.history['val_loss'])
+            if verbose:
+                print(f"minimum {i} model's validation loss: {val_loss}.")
 
-            val_losses.append(min(history.history['val_loss']))
+            val_losses.append(val_loss)
             
         min_loss_index = val_losses.index(min(val_losses))
         self.best_params = self.params_list[min_loss_index]
+        if verbose:
+                print(f"Best model's validation loss: {min(val_losses)}.")
 
         self.best_model, self.history = self.__train_best_model__(
             train_data,

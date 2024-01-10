@@ -68,3 +68,51 @@ def plot_fit(true_values:np.ndarray, fitted_values:np.ndarray, predicted:bool=Fa
             except:
                 pass
     plt.show()
+
+def process_simulated_series(series:np.ndarray, seed:int=None):
+    """
+    Funciton to process a simulated data to rescale securing a certain
+    percentage of zeros ocurrence and convert into count values.
+
+    Args:
+    ----------
+        series:np.ndarray
+            Time series to be processed
+        seed:int=None
+            Random seed for the percentage of zeros draw
+
+    Returns:
+    ---------
+        np.ndarray
+            Processed time series
+    """
+    if seed:
+        np.random.seed(seed)
+
+    quatile = np.random.random()*0.05+0.05
+    min_val = np.quantile(series, quatile)
+    series = series - min_val
+    series = np.where(series < 0, 0, series)
+    series = np.round(series, decimals=0)
+    return series
+
+def process_simulated_data(data:np.ndarray, seed:int=None):
+    """
+    Funciton to process the simulated data to rescale securing a certain
+    percentage of zeros ocurrence and convert into count values.
+
+    Args:
+    ----------
+        series:np.ndarray
+            Time series dataset to be processed
+        seed:int=None
+            Random seed for the percentage of zeros draw
+
+    Returns:
+    ---------
+        np.ndarray
+            Processed time series dataset
+    """
+    if seed:
+        np.random.seed(seed)
+    return np.apply_along_axis(process_simulated_series, 0 ,data)

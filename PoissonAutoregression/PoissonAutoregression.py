@@ -208,7 +208,7 @@ class PoissonAutoregression():
             return grad
 
         if self.type == 'log-lineal':
-            y_hat = 1/(np.exp(-self.nu[self.k:])+epsilon)
+            y_hat = 1/np.exp(-self.nu[self.k:])
             grad = self.grad_nu[self.k:,:].T @ (y_hat - self.y[self.k:])
             return grad
         
@@ -366,7 +366,7 @@ class PoissonAutoregression():
 
             self.coefs = theta
             self.hist = self.hist[~np.isnan(self.hist)]
-            self.fitted = np.exp(self.nu)
+            self.fitted = 1/np.exp(-self.nu)
 
     def predict(self, h:int):
         """
@@ -422,7 +422,7 @@ class PoissonAutoregression():
                 nu = x.T @ self.coefs
                 nus_v[t] = nu
             
-            self.y_pred = np.exp(nus_v)
+            self.y_pred = 1/np.exp(-nus_v)
 
         return self.y_pred
 
@@ -560,6 +560,17 @@ class AutoINGARCH():
         self.num_iter = num_iter
         self.verbose = verbose
     
+    def get_cv_score(self, p, q):
+
+        model = PoissonAutoregression(p=p, q=q, link=self.link)
+        try:
+            cv_score = ts_cv_score(model=model, series=self.series, method=self.method, tol=self.tol, num_iter=self.num_iter)
+        except:
+            cv_score = None
+        if self.verbose:
+                print(f'Model fited with p = {p} and q = {q} returns a cv_score of {cv_score}')
+        return cv_score
+
     def __call__(self):
         """
         Method to make the object callable that executes the fitting, prediction and evaluation
@@ -567,17 +578,19 @@ class AutoINGARCH():
         returns the model with the best metric
         """
 
-        cv_scores = []
+        # cv_scores = []
 
-        for (p,q) in self.grid:
+        # for (p,q) in self.grid:
 
-            model = PoissonAutoregression(p=p, q=q, link=self.link)
-            cv_score = ts_cv_score(model=model, series=self.series, method=self.method, tol=self.tol, num_iter=self.num_iter)
-            cv_scores.append(cv_score)
+        #     model = PoissonAutoregression(p=p, q=q, link=self.link)
+        #     cv_score = ts_cv_score(model=model, series=self.series, method=self.method, tol=self.tol, num_iter=self.num_iter)
+        #     cv_scores.append(cv_score)
 
-            if self.verbose:
-                print(f'Model fited with p = {p} and q = {q} returns a cv_score of {cv_score}')
-            
+        #     if self.verbose:
+        #         print(f'Model fited with p = {p} and q = {q} returns a cv_score of {cv_score}')
+
+        cv_scores = [self.get_cv_score(p,q) for (p,q) in self.grid]
+        cv_scores = [score for score in cv_scores if score is not None]       
 
         self.cv_scores = np.array(cv_scores)
         self.p = self.grid[self.cv_scores.argmin()][0]
@@ -602,7 +615,8 @@ class MultivariatePoissonAutorregresion():
         max_q:int=12,
         cv_folds:int=5,
         link:str="log-lineal",
-        method:str="Adam"
+        method:str="Adam",
+        num_iter:int=100
     ):
         """
         Class instantiation method.
@@ -630,14 +644,17 @@ class MultivariatePoissonAutorregresion():
                 Note that the "Adam" gradient descent is an unconstrained method and may fall to
                 find values that fulfill the condition to garantee stationarity for the series, in which case
                 the warning will shown.
+            num_iter:Optional[int]=10000
+                Maximum number of iterations. Only required for the Adam method
         """
         self.max_p=max_p
         self.max_q=max_q
         self.cv_folds=cv_folds
         self.link=link
         self.method=method
+        self.num_iter = num_iter
 
-    def fit(self, data:np.ndarray):
+    def fit(self, data:np.ndarray, verbose:False):
         """
         Method for the automatic instantiation and automatic autorregresive order
         selection for the models for each series in the data using the AutoINGARCH
@@ -653,12 +670,14 @@ class MultivariatePoissonAutorregresion():
         self.fitted_values=[]
 
         for i in range(cols):
+            print(f"Fitting model {i}/{cols-1}")
             auto_ingarch = AutoINGARCH(
                 series=data[:,i], 
                 max_p=self.max_p, 
                 max_q=self.max_q, 
                 cv_folds=self.cv_folds, 
-                num_iter=100
+                num_iter=self.num_iter,
+                verbose=verbose
             )
             ingarch_model = auto_ingarch()
             self.models["poisson_autoregression_"+str(i)] = PoissonAutoregression(

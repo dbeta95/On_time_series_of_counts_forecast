@@ -62,6 +62,7 @@ class PositionalEncoder(tf.keras.layers.Layer):
         super().__init__()
         self.d_model = d_model
         self.pos_encoding = positional_encoding(lenght=lenght, depth=d_model)
+        self.layer_norm = tf.keras.layers.LayerNormalization()
 
     def call(self, x):
         """
@@ -73,6 +74,7 @@ class PositionalEncoder(tf.keras.layers.Layer):
                 Tensor containing the layer's inputs
         """
         length = tf.shape(x)[1]
+        x = self.layer_norm(x)
         x *= tf.math.sqrt(tf.cast(self.d_model, tf.float32))
         x = x + self.pos_encoding[tf.newaxis, :length, :]
         return x

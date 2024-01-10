@@ -12,7 +12,7 @@ def window_dataset_sequence_to_sequence(
     output_lenght:int,
     batch_size:int,
     shift:int,
-    output_index=0,
+    output_index:int=None,
     shuffle:bool = True,
 ):
     """
@@ -46,7 +46,7 @@ def window_dataset_sequence_to_sequence(
     n = data.shape[0]
 
     # The full window has the size of the inputs sequence plus the outpus
-    window_size = sequence_lenght + output_lenght
+    window_size = int(sequence_lenght + output_lenght)
     
     # Convert the data to a tensorflowdataset
     ds = tf.data.Dataset.from_tensor_slices(data)

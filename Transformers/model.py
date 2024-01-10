@@ -3,6 +3,7 @@ Module containing the full model with the architechture
 implemented in this work.
 """
 import tensorflow as tf
+import numpy as np
 from Transformers.layers import Encoder, Decoder
 
 class Transformer(tf.keras.Model):
@@ -13,7 +14,8 @@ class Transformer(tf.keras.Model):
     def __init__(self,
         num_layers:int, 
         d_model:int, 
-        lenght:int,
+        input_lenght:int,
+        output_lenght:int,
         d_target:int, 
         num_heads:int, 
         dff:int, 
@@ -31,8 +33,10 @@ class Transformer(tf.keras.Model):
                 Dimension of each element in the secuence within 
                 the model. For this architecture it is the same as 
                 both the encoding and decoding inputs dimension
-            lenght:int
-                lenght of the positional encoding array
+            input_lenght:int
+                lenght of the positional encoding array for the input,
+            output_lenght:int
+                lenght of the positional encoding array for the output,
             d_target:int
                 Dimension of each element in the target's sequence
             num_heads:int
@@ -51,7 +55,7 @@ class Transformer(tf.keras.Model):
             num_heads=num_heads,
             dff=dff,
             dropout_rate=dropout_rate,
-            lenght=lenght
+            lenght=input_lenght
         )
         self.decoder = Decoder(
             num_layers=num_layers,
@@ -59,7 +63,7 @@ class Transformer(tf.keras.Model):
             num_heads=num_heads,
             dff=dff,
             dropout_rate=dropout_rate,
-            lenght=lenght
+            lenght=output_lenght
         )
         self.final_layer = tf.keras.layers.Dense(d_target)
 
@@ -83,3 +87,50 @@ class Transformer(tf.keras.Model):
 
         # Return the final output and the attention weights.
         return x
+    
+class Forecaster(tf.Module):
+    """
+    Class to forecast an specific number of steps using the transformer model
+    """
+    def __init__(self, scaler, transformer):
+        """
+        Class instantiation method
+
+        Args:
+        ---------
+            scaler:
+                Scaler object trained for the transformer model
+            transformer:
+                Transformer model trained
+        """
+        self.scaler = scaler
+        self.transformer = transformer
+
+    def __call__(self, inputs:np.ndarray, steps:int):
+        """
+        Forecastign method for the transformer
+
+        Args:
+        ---------
+            inputs:np.ndarray
+                Arry containing the inputs for the forecasting
+            steps:int
+                Periods to be forecasted.
+        """
+        scaled_data = self.scaler.transform(inputs)
+        start = scaled_data[-1].reshape((1,-1))
+        scaled_data = scaled_data[np.newaxis]
+        encoder_input = tf.constant(scaled_data)
+        output_array = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
+        output_array = output_array.write(0, start)
+
+        for t in range(steps):
+            output = tf.transpose(output_array.stack(), [1,0,2])
+            prediction = self.transformer((encoder_input, output), training=False)
+            prediction = tf.reshape(prediction[:, -1, :], (1,-1))
+            output_array = output_array.write(t+1, prediction)
+
+        output = tf.transpose(output_array.stack(), [1,0,2])
+        output = output.numpy()[0,1:,:]
+
+        return self.scaler.inverse_transform(output)
